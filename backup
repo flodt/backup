@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 
-import subprocess
 import os
 import sys
 import time
-import readline
 import cmd
+import json
 
 script_path = ""
 config_file_path = ""
@@ -21,264 +20,254 @@ stub = "rsync -av "
 dry_stub = "rsync -avn "
 selected = []
 
+
 def readable_time(sec_elapsed):
-	h = int(sec_elapsed / (60 * 60))
-	m = int((sec_elapsed % (60 * 60)) / 60)
-	s = sec_elapsed % 60.
-	return "{}:{:>02}:{:>05.2f}".format(h, m, s)
+    h = int(sec_elapsed / (60 * 60))
+    m = int((sec_elapsed % (60 * 60)) / 60)
+    s = sec_elapsed % 60.
+    return "{}:{:>02}:{:>05.2f}".format(h, m, s)
+
 
 def process_arguments(arguments):
-	args = arguments.split()
-	ints = []
-	for i in args:
-		ints.append(int(i))
-	return list(set(ints))
+    args = arguments.split()
+    ints = []
+    for i in args:
+        ints.append(int(i))
+    return list(set(ints))
+
 
 def select_available():
-		global selected
+    global selected
 
-		if selected:
-			unfiltered = selected
-			selected = []
-			for i in unfiltered:
-				if os.path.isdir(raw_sources[i - 1]) and os.path.isdir(raw_destinations[i - 1]):
-					selected.append(i)
-			print("Selection automatically narrowed to available locations.")
-			print(selected)
+    if selected:
+        unfiltered = selected
+        selected = []
+        for i in unfiltered:
+            if os.path.isdir(raw_sources[i - 1]) and os.path.isdir(raw_destinations[i - 1]):
+                selected.append(i)
+        print("Selection automatically narrowed to available locations.")
+        print(selected)
 
-		if not selected:
-			for i in range(0, len(sources)):
-				if os.path.isdir(raw_sources[i]) and os.path.isdir(raw_destinations[i]):
-					selected.append(i + 1)
-			print("Selection automatically narrowed to available locations.")
-			print(selected)
+    if not selected:
+        for i in range(0, len(sources)):
+            if os.path.isdir(raw_sources[i]) and os.path.isdir(raw_destinations[i]):
+                selected.append(i + 1)
+        print("Selection automatically narrowed to available locations.")
+        print(selected)
+
 
 class BackupConsole(cmd.Cmd):
-	def __init__(self):
-		cmd.Cmd.__init__(self)
-		self.completekey = 'tab'
-		self.prompt = "> "
-		self.intro = "rsync backup utility (v1.7)\n---------------------------"
+    def __init__(self):
+        cmd.Cmd.__init__(self)
+        self.completekey = 'tab'
+        self.prompt = "> "
+        self.intro = "rsync backup utility (v1.8)\n---------------------------"
 
+    def exit(exit_code):
+        sys.exit(exit_code)
 
-	def exit(exit_code):
-		sys.exit(exit_code)
+    def do_history(self, args):
+        """Shows the command history."""
+        print(self._hist)
 
-	def do_history(self, args):
-		"""Shows the command history."""
-		print(self._hist)
+    def do_exit(self, args):
+        """Exits from the console."""
+        return -1
 
-	def do_exit(self, args):
-		"""Exits from the console."""
-		return -1
+    def do_clear(self, args):
+        """Shortcut for '!clear', clears the screen."""
+        os.system("clear")
 
-	def do_clear(self, args):
-		"""Shortcut for '!clear', clears the screen."""
-		os.system("clear")
+    def do_ls(self, args):
+        """Lists the backup volumes required."""
+        print("Required volumes:")
+        for i in range(0, len(mountpoints)):
+            print(str(i + 1) + ": " + mountpoints[i])
 
+    def do_commands(self, args):
+        """Print the constructed rsync commands."""
+        if not selected:
+            print("Listed commands:")
+            for i in range(0, len(commands)):
+                print(str(i + 1) + ": " + commands[i])
+        else:
+            print("Selected commands:")
+            for i in selected:
+                print(str(i) + ": " + commands[i - 1])
 
-	def do_ls(self, args):
-		"""Lists the backup volumes required."""
-		print("Required volumes:")
-		for i in range(0, len(mountpoints)):
-			print(str(i + 1) + ": " + mountpoints[i])
+    def do_locations(self, args):
+        """Print the selected location pairs."""
+        if not selected:
+            print("Listed location pairs:")
+            for i in range(0, len(sources)):
+                print(str(i + 1) + ": " + sources[i] + " --> " + destinations[i])
+        else:
+            print("Selected location pairs:")
+            for i in selected:
+                print(str(i) + ": " + sources[i - 1] + " --> " + destinations[i - 1])
 
-	def do_commands(self, args):
-		"""Print the constructed rsync commands."""
-		if not selected:
-			print("Listed commands:")
-			for i in range(0, len(commands)):
-				print(str(i + 1) + ": " + commands[i])
-		else:
-			print("Selected commands:")
-			for i in selected:
-				print(str(i) + ": " + commands[i - 1])
+    def do_available(self, args):
+        """Selects all the available location pairs."""
+        select_available()
 
-	def do_locations(self, args):
-		"""Print the selected location pairs."""
-		if not selected:
-			print("Listed location pairs:")
-			for i in range(0, len(sources)):
-				print(str(i + 1) + ": " + sources[i] + " --> " + destinations[i])
-		else:
-			print("Selected location pairs:")
-			for i in selected:
-				print(str(i) + ": " + sources[i - 1] + " --> " + destinations[i - 1])
+    def do_backup(self, args):
+        """rsync the selected location pairs."""
 
-	def do_available(self, args):
-		"""Selects all the available location pairs."""
-		select_available()
+        select_available()
 
-	def do_backup(self, args):
-		"""rsync the selected location pairs."""
+        if not selected:
+            before = time.time()
+            for command in commands:
+                print("Syncing location " + str(commands.index(command) + 1) + "/" + str(len(commands)) + "...")
+                os.system(command)
+            print("")
+            after = time.time()
+            diff = after - before
+            print("Completed in " + readable_time(diff) + " h/mm/ss.")
+        else:
+            before = time.time()
+            for i in selected:
+                print("Syncing location " + str(i) + "/" + str(len(commands)) + "...")
+                os.system(commands[i - 1])
+            print("")
+            after = time.time()
+            diff = after - before
+            print("Completed in " + readable_time(diff) + " h/mm/ss.")
 
-		select_available()
+    def do_dryrun(self, args):
+        """rsync dry-run the selected location pairs."""
 
-		if not selected:
-			before = time.time()
-			for command in commands:
-				print("Syncing location " + str(commands.index(command) + 1) + "/" + str(len(commands)) + "...")
-				os.system(command)
-			print("")
-			after = time.time()
-			diff = after - before
-			print("Completed in " + readable_time(diff) + " h/mm/ss.")
-		else:
-			before = time.time()
-			for i in selected:
-				print("Syncing location " + str(i) + "/" + str(len(commands)) + "...")
-				os.system(commands[i - 1])
-			print("")
-			after = time.time()
-			diff = after - before
-			print("Completed in " + readable_time(diff) + " h/mm/ss.")
+        select_available()
 
-	def do_dryrun(self, args):
-		"""rsync dry-run the selected location pairs."""
+        if not selected:
+            before = time.time()
+            for command in dry_commands:
+                print("Syncing location " + str(dry_commands.index(command) + 1) + "/" + str(len(dry_commands)) + "...")
+                os.system(command)
+            print("")
+            after = time.time()
+            diff = after - before
+            print("Completed in " + readable_time(diff) + " h/mm/ss.")
+        else:
+            before = time.time()
+            for i in selected:
+                print("Syncing location " + str(i) + "/" + str(len(dry_commands)) + "...")
+                os.system(dry_commands[i - 1])
+            print("")
+            after = time.time()
+            diff = after - before
+            print("Completed in " + readable_time(diff) + " h/mm/ss.")
 
-		select_available()
+    def do_select(self, args):
+        """Select the given location pairs for backup."""
+        global selected
 
-		if not selected:
-			before = time.time()
-			for command in dry_commands:
-				print("Syncing location " + str(dry_commands.index(command) + 1) + "/" + str(len(dry_commands)) + "...")
-				os.system(command)
-			print("")
-			after = time.time()
-			diff = after - before
-			print("Completed in " + readable_time(diff) + " h/mm/ss.")
-		else:
-			before = time.time()
-			for i in selected:
-				print("Syncing location " + str(i) + "/" + str(len(dry_commands)) + "...")
-				os.system(dry_commands[i - 1])
-			print("")
-			after = time.time()
-			diff = after - before
-			print("Completed in " + readable_time(diff) + " h/mm/ss.")
+        if selected:
+            selected = []
 
-	def do_select(self, args):
-		"""Select the given location pairs for backup."""
-		global selected
+        arguments = args.split()
+        if not arguments:
+            processed = process_arguments(input("Specify which volumes to select... "))
+        else:
+            processed = process_arguments(args)
+        for i in processed:
+            selected.append(i)
+        print("Selected locations: " + str(selected))
 
-		if selected:
-			selected = []
+    def do_deselect(self, args):
+        """Clear the selection."""
+        global selected
 
-		arguments = args.split()
-		if not arguments:
-			processed = process_arguments(input("Specify which volumes to select... "))
-		else:
-			processed = process_arguments(args)
-		for i in processed:
-			selected.append(i)
-		print("Selected locations: " + str(selected))
+        selected = []
+        print("Selection cleared.")
 
-	def do_deselect(self, args):
-		"""Clear the selection."""
-		global selected
+    def do_shell(self, args):
+        """Pass command to a system shell when line begins with '!'"""
+        os.system(args)
 
-		selected = []
-		print("Selection cleared.")
+    def preloop(self):
+        global script_path
+        global config_file_path
 
+        global sources
+        global raw_sources
+        global destinations
+        global raw_destinations
+        global mountpoints
+        global commands
+        global dry_commands
+        global stub
 
-	def do_shell(self, args):
-		"""Pass command to a system shell when line begins with '!'"""
-		os.system(args)
+        script_path = os.path.dirname(__file__)
+        config_file_path = os.path.join(script_path, "config", "locations.json")
+        print("Module is in " + script_path)
+        print("locations.json is at " + config_file_path)
 
-	def preloop(self):
-		global script_path
-		global config_file_path
+        print("Reading configuration file...")
+        with open(config_file_path) as config:
+            content = config.read()
 
-		global sources
-		global raw_sources
-		global destinations
-		global raw_destinations
-		global mountpoints
-		global commands
-		global dry_commands
-		global stub
+        json_locations = json.loads(content)
 
-		script_path = os.path.dirname(__file__)
-		config_file_path = os.path.join(script_path, "config/locations.conf")
-		print("Module is in " + script_path)
-		print("locations.conf is at " + config_file_path)
+        for loc in json_locations:
+            raw_sources.append(loc["src"])
+            raw_destinations.append(loc["dst"])
 
+        print("Parsing locations...")
+        raw_mountpoints = []
+        for path in raw_sources:
+            raw_mountpoints.append(path.split('/')[2])
+        for path in raw_destinations:
+            raw_mountpoints.append(path.split('/')[2])
+        mountpoints = list(set(raw_mountpoints))
 
-		print("Reading configuration file...")
-		with open(config_file_path) as config:
-			content = config.read().splitlines()
-		if (len(content) / 3) >= 1 and (len(content) % 3) == 0:
-			index = 0
-			while (index < len(content)):
-				if content[index].startswith('#'):
-					index += 1
-				if content[index].startswith('@src:'):
-					raw_sources.append(content[index].split(':', 1)[1])
-					index += 1
-				if content[index].startswith('@dst:'):
-					raw_destinations.append(content[index].split(':',1)[1])
-					index += 1
-				else:
-					print("Parsing error while reading configuration file.")
-					exit(1)
-		else:
-			print("Error reading configuration file.")
-			exit(1)
+        for path in raw_sources:
+            sources.append(path.replace(" ", "\\ "))
+        for path in raw_destinations:
+            destinations.append(path.replace(" ", "\\ "))
 
-		print("Parsing locations...")
-		raw_mountpoints = []
-		for path in raw_sources:
-			raw_mountpoints.append(path.split('/')[2])
-		for path in raw_destinations:
-			raw_mountpoints.append(path.split('/')[2])
-		mountpoints = list(set(raw_mountpoints))
+        if len(sources) != len(destinations):
+            print("Parsing error occured. Exiting...")
+            exit(1)
 
-		for path in raw_sources:
-			sources.append(path.replace(" ", "\\ "))
-		for path in raw_destinations:
-			destinations.append(path.replace(" ", "\\ "))
+        if len(sources) == 0:
+            print("None available. Exiting...")
+            exit(2)
 
-		if len(sources) != len(destinations):
-			print("Parsing error occured. Exiting...")
-			exit(1)
+        print("Constructing commands...")
+        for i in range(0, len(sources)):
+            commands.append(stub + sources[i] + " " + destinations[i])
+            dry_commands.append(dry_stub + sources[i] + " " + destinations[i])
 
-		if len(sources) == 0:
-			print("None available. Exiting...")
-			exit(2)
+        print("Configuring...")
+        cmd.Cmd.preloop(self)
+        self._hist = []
+        self._locals = {}
+        self._globals = {}
 
-		print("Constructing commands...")
-		for i in range(0, len(sources)):
-			commands.append(stub + sources[i] + " " + destinations[i])
-			dry_commands.append(dry_stub + sources[i] + " " + destinations[i])
+        os.system("clear")
 
-		print("Configuring...")
-		cmd.Cmd.preloop(self)
-		self._hist    = []
-		self._locals  = {}
-		self._globals = {}
+    def postloop(self):
+        cmd.Cmd.postloop(self)
+        print("Exiting...")
+        os.system("clear")
 
-		os.system("clear")
+    def precmd(self, line):
+        self._hist += [line.strip()]
+        return line
 
-	def postloop(self):
-		cmd.Cmd.postloop(self)
-		print("Exiting...")
-		os.system("clear")
+    def postcmd(self, stop, line):
+        if not line == "clear":
+            print("")
+        return stop
 
-	def precmd(self, line):
-		self._hist += [line.strip()]
-		return line
+    def emptyline(self):
+        pass
 
-	def postcmd(self, stop, line):
-		if not line == "clear":
-			print("")
-		return stop
+    def default(self, line):
+        print(str(line) + ": command not found")
 
-	def emptyline(self):
-		pass
-
-	def default(self, line):
-		print(str(line) + ": command not found")
 
 if __name__ == '__main__':
-	console = BackupConsole()
-	console.cmdloop()
+    console = BackupConsole()
+    console.cmdloop()
