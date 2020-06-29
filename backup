@@ -16,7 +16,7 @@ raw_destinations = []
 mountpoints = []
 commands = []
 dry_commands = []
-stub = "rsync -av "
+stub = "rsync -av --progress "
 dry_stub = "rsync -avn "
 selected = []
 
