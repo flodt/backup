@@ -1,6 +1,7 @@
 [
   {
   	"src": "SOURCE PATH",
-  	"dst": "DESTINATION PATH"
+  	"dst": "DESTINATION PATH",
+  	"ignore": false
   }
 ]
